@@ -1,4 +1,5 @@
 ### Eld's deer pre-processing
+```bash
 #!/bin/bash
 #SBATCH --job-name=EldDeer_pipeline
 #SBATCH --output=logs/elddeer_%A_%a.out
@@ -124,3 +125,4 @@ echo "Pipeline complete for ${SAMPLE}"
 echo "Output: ${OUT_DIR}/${SAMPLE}_final.bam"
 echo "End: $(date)"
 echo "=========================================="
+```
