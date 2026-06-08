@@ -55,55 +55,81 @@ echo "Completed processing ${SAMPLE_NAME} at $(date)"
 For population analysis across 35 individuals, we should perform joint-genotyping on the generated .g.vcf data rather than isolating single-sample VCF vectors. This protects your population stats from massive artificial missing data patterns.
 
 ```bash
-cd /anvil/scratch/x-bbist/Eld_Deer/Variant_Calling/DeepVariant
-module load bcftools
+#!/bin/bash
+#SBATCH --job-name=EldDeer_GLnexus
+#SBATCH --output=/anvil/scratch/x-bbist/Eld_Deer/Variant_Calling/DeepVariant/logs/glnexus_%j.out
+#SBATCH --error=/anvil/scratch/x-bbist/Eld_Deer/Variant_Calling/DeepVariant/logs/glnexus_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=128       # Scale up to utilize the full 128 cores of the Anvil node
+#SBATCH --mem=140G                # Allocates the entire system memory footprint available
+#SBATCH -p wholenode              # Explicitly targets Anvil's node-exclusive whole node partition
+#SBATCH --time=54:00:00           # Cleaned time configuration boundary (54 hours)
 
-# 1. Compress and Index gVCF profiles
-for f in gvcfs/*.dv.g.vcf; do
-    bcftools view -Oz -o "${f}.gz" "$f" &
-done
-wait
+# ---------------- Load Environments ----------------- #
+module load biocontainers/default
+module load glnexus/1.4.1
+module load bcftools/1.17
 
-for f in gvcfs/*.dv.g.vcf.gz; do
-    bcftools index "$f" &
-done
-wait
+# ---------------- Set Variables --------------------- #
+WORKING_DIR=/anvil/scratch/x-bbist/Eld_Deer/Variant_Calling/DeepVariant
+OUTPUT_DIR=${WORKING_DIR}/cohort_vcf
 
-# 2. Jointly merge gVCF structures into a unified matrix
-bcftools merge -g gvcfs/*.dv.g.vcf.gz -Oz -o vcf_results/Eld_Deer_35_samples_merged.g.vcf.gz
+cd ${WORKING_DIR}
 
-# 3. Extract the comprehensive Multi-Sample variant layer
-bcftools convert -O z -o vcf_results/Eld_Deer_35_samples_raw.vcf.gz vcf_results/Eld_Deer_35_samples_merged.g.vcf.gz
-bcftools index vcf_results/Eld_Deer_35_samples_raw.vcf.gz
+echo "=================================================="
+echo "Starting GLnexus joint consolidation at $(date)"
+echo "=================================================="
+
+# Safety reset: Clear any broken temporary databases from previous attempts
+rm -rf ${WORKING_DIR}/GLnexus.DB
+
+# Execute the core joint calling
+# GLnexus uses all *.dv.g.vcf.gz files in the folder and creates a unified binary BCF file
+glnexus_cli \
+  --config DeepVariant \
+  --threads ${SLURM_CPUS_PER_TASK} \
+  --mem-gbytes 115 \
+  *.dv.g.vcf.gz > ${OUTPUT_DIR}/Eld_Deer_35_samples_raw.bcf
+
+echo "GLnexus finished. Starting bcftools conversion to compressed VCF..."
+
+# ---------------- Format Conversion ------------------ #
+# Convert the binary BCF file into a standard, compressed multi-sample VCF
+bcftools view \
+  -Oz \
+  -o ${OUTPUT_DIR}/Eld_Deer_35_samples_joint.vcf.gz \
+  ${OUTPUT_DIR}/Eld_Deer_35_samples_raw.bcf
+
+# Index the multi-sample population VCF
+bcftools index ${OUTPUT_DIR}/Eld_Deer_35_samples_joint.vcf.gz
+
+# Clean up the massive raw BCF to save your scratch space
+rm ${OUTPUT_DIR}/Eld_Deer_35_samples_raw.bcf
+
+echo "=================================================="
+echo "Pipeline completely completed at $(date)!"
+echo "=================================================="
 ```
 
-Step 4: Downstream Filtering & Evaluation
+#### Step 4: Downstream Filtering & Evaluation
 Run your downstream splits to slice out your variant subgroups:
 
 ```bash
-mkdir -p vcf_results/With_Indels vcf_results/Without_Indels
-RAW_VCF=vcf_results/Eld_Deer_35_samples_raw.vcf.gz
+cd /anvil/scratch/x-bbist/Eld_Deer/Variant_Calling/DeepVariant/cohort_vcf/VCF_filtering_for_DeepVariant_Data
 
-# A. Structural/VEP Workflow (High Quality, Includes Indels)
-vcftools --gzvcf $RAW_VCF \
-         --minQ 30 \
-         --recode --recode-INFO-all \
-         --out vcf_results/With_Indels/Eld_Deer_merged_dv_with_indels
+# Load vcftools if it isn't already active
+module load biocontainers/default
+module load vcftools/0.1.16
 
-# B. Population Genomics Workflow (High Quality, Strict Biallelic SNPs)
-vcftools --gzvcf $RAW_VCF \
-         --minQ 30 \
-         --min-alleles 2 \
-         --max-alleles 2 \
-         --remove-indels \
-         --recode --recode-INFO-all \
-         --out vcf_results/Without_Indels/Eld_Deer_merged_dv_biallelic_snps
-````
-
-Step 5: Quantify Outputs
-To output your final metrics and see how your pipeline stacks up against GATK:
-
-```bash
-echo "Total Bi-allelic SNPs generated via DeepVariant:"
-bcftools view -H vcf_results/Without_Indels/Eld_Deer_merged_dv_biallelic_snps.recode.vcf |
+# Run the test filtration command
+vcftools \
+  --gzvcf ../Eld_Deer_35_samples_joint.vcf.gz \
+  --remove-indels \
+  --maf 0.05 \
+  --minGQ 20 \
+  --max-missing 0.20 \
+  --recode \
+  --out Eld_Deer_35_samples_GQ20_test
 ```
+
