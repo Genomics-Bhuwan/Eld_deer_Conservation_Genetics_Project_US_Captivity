@@ -8,7 +8,7 @@ java -Xmx24g -jar beagle5.jar gt=Eld_Deer_35_samples_GQ20_test_biallelic.recode.
 
 ## Index the multi-sample phased vcf
 bcftools index Eld_Deer_phased.vcf.gz
-
+```
 #### Step 2. Generate the indiviudal genomic mask files. 
 - This loop generates the individual callability masks for the samples so MSMC2 knows which regions have reliable data.
 ```bash
@@ -25,6 +25,7 @@ done
 - Run the python utility script to compile the specialized input text files for each of the three subspecies group.
 # 1. Generate Thamin input
 # 1. Generate Thamin Population Input
+```bash
 python3 msmc-tools/generate_multihetsep.py \
     --mask RE116077.mask.bed.gz --mask RE115445.mask.bed.gz \
     --mask RE115304.mask.bed.gz --mask RE115125.mask.bed.gz \
@@ -41,15 +42,17 @@ python3 msmc-tools/generate_multihetsep.py \
     --mask CRR773097.mask.bed.gz --mask CRR773096.mask.bed.gz \
     --mask CRR773095.mask.bed.gz --mask CRR773094.mask.bed.gz \
     Eld_Deer_phased.vcf.gz > siamensis.multihetsep.txt
-
+   ``` 
 - Finally, run the calculation engine sequentially for each subspecies. The -t 4 flag tells it to utilize 4 CPU cores on your login node:
-
-Bash
+#### Step 4. Run the demographic history using MSMC2
+```bash
 # Run Thamin calculation
-msmc2 -t 4 -p 1*2+15*1+1*2 -o thamin_msmc2 -I 0,1,2,3,4,5,6,7 thamin.multihetsep.txt
+# Run Thamin Demography
+~/miniconda3/envs/msmc2_env/bin/msmc2_Linux -t 4 -p 1*2+15*1+1*2 -o thamin_msmc2 -I 0,1,2,3,4,5,6,7 thamin.multihetsep.txt
 
-# Run Hainanus calculation
-msmc2 -t 4 -p 1*2+15*1+1*2 -o hainanus_msmc2 -I 0,1,2,3,4,5,6,7 hainanus.multihetsep.txt
+# Run Hainanus Demography
+~/miniconda3/envs/msmc2_env/bin/msmc2_Linux -t 4 -p 1*2+15*1+1*2 -o hainanus_msmc2 -I 0,1,2,3,4,5,6,7 hainanus.multihetsep.txt
 
-# Run Siamensis calculation
-msmc2 -t 4 -p 1*2+15*1+1*2 -o siamensis_msmc2 -I 0,1,2,3,4,5,6,7 siamensis.multihetsep.txt
+# Run Siamensis Demography
+~/miniconda3/envs/msmc2_env/bin/msmc2_Linux -t 4 -p 1*2+15*1+1*2 -o siamensis_msmc2 -I 0,1,2,3,4,5,6,7 siamensis.multihetsep.txt
+```
