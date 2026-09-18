@@ -52,3 +52,64 @@ cd "${WORKDIR}"
   "${INPUT_VCF}" \
   > "${OUTPUT_VCF}"
 ```
+
+#### Step 2. Consequences or impact class categorization based on synonymous variant, missense variant and loss of function.
+```bash
+
+#!/bin/bash
+# ==============================================================================
+# SnpSift Variant Extraction by Functional Consequence
+# Target Species: Rucervus eldii (Eld's deer)
+# Input VCF: Eld_Deer_35_samples_GQ20_with_indels_annotated.vcf
+# ==============================================================================
+
+set -euo pipefail
+
+# 1. Define Paths and Executables
+WORKING_DIR="/home/bistbs/Elds_deer_Population_Genetic_Analysis/SNPeff_Elds_deer"
+SNPSIFT_JAR="${WORKING_DIR}/snpEff/SnpSift.jar"
+JAVA_EXEC="${WORKING_DIR}/jdk-21.0.2+13/bin/java"
+
+INPUT_VCF="${WORKING_DIR}/Eld_Deer_35_samples_GQ20_with_indels_annotated.vcf"
+OUTPUT_DIR="${WORKING_DIR}/Variants_by_Consequences"
+
+# 2. Create the Output Directory
+echo "Creating output directory: ${OUTPUT_DIR}"
+mkdir -p "${OUTPUT_DIR}"
+
+# 3. Extract Missense Variants
+echo "Extracting Missense variants..."
+${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'missense_variant'" \
+  ${INPUT_VCF} \
+  > ${OUTPUT_DIR}/Eld_deer_missense_sites.vcf
+
+# 4. Extract Synonymous Variants
+echo "Extracting Synonymous variants..."
+${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'synonymous_variant'" \
+  ${INPUT_VCF} \
+  > ${OUTPUT_DIR}/Eld_deer_synonymous_sites.vcf
+
+# 5. Extract Loss of Function (LoF), Inframe Indels, & Splicing Variants
+echo "Extracting Loss of Function (LoF) & Splicing variants..."
+${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "(ANN[*].EFFECT has 'transcript_ablation') | (ANN[*].EFFECT has 'splice_donor_variant') | (ANN[*].EFFECT has 'splice_acceptor_variant') | (ANN[*].EFFECT has 'stop_gained') | (ANN[*].EFFECT has 'stop_lost') | (ANN[*].EFFECT has 'frameshift_variant') | (ANN[*].EFFECT has 'inframe_insertion') | (ANN[*].EFFECT has 'inframe_deletion') | (ANN[*].EFFECT has 'splice_region_variant')" \
+  ${INPUT_VCF} \
+  > ${OUTPUT_DIR}/Eld_deer_lof_sites.vcf
+
+# 6. Extract Intergenic Variants
+echo "Extracting Intergenic variants..."
+${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'intergenic_region'" \
+  ${INPUT_VCF} \
+  > ${OUTPUT_DIR}/Eld_deer_intergenic_sites.vcf
+
+# -----------------------------------------------------------------
+# Verification & Summary Block
+# -----------------------------------------------------------------
+echo "---------------------------------------------------"
+echo "Filtering Complete! Total variant counts extracted:"
+echo "---------------------------------------------------"
+echo -n "Missense Sites:   " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_missense_sites.vcf | wc -l
+echo -n "Synonymous Sites: " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_synonymous_sites.vcf | wc -l
+echo -n "LoF/Splicing:     " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_lof_sites.vcf | wc -l
+echo -n "Intergenic Sites: " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_intergenic_sites.vcf | wc -l
+echo "---------------------------------------------------"
+```
