@@ -1,112 +1,123 @@
 #### Variant Annotation for Eld's deer using SnpEff
 ```bash
 #!/bin/bash
-# SnpEff Database Build & Variant Annotation (SNPs + Indels)
-# Species: Rucervus eldii
+# ==============================================================================
+# Full Population Genomics Pipeline: SnpEff Annotation & Consequence Extraction
+# Species: Rucervus eldii (Eld's deer)
+# Samples: 35
+# Primary Target: Autosomes CM139461.1 - CM139488.1 (Biallelic)
 # ==============================================================================
 
 set -euo pipefail
 
-# 1. Define Directories and Paths
+# ------------------------------------------------------------------------------
+# 1. Path & Environment Setup
+# ------------------------------------------------------------------------------
 WORKDIR="/home/bistbs/Elds_deer_Population_Genetic_Analysis/SNPeff_Elds_deer"
-SNPEFF_DIR="${WORKDIR}/snpEff"
-JAVA_BIN="${WORKDIR}/jdk-21.0.2+13/bin/java"
-DB_NAME="Rucervus_eldii"
+JAVA_EXEC="${WORKDIR}/jdk-21.0.2+13/bin/java"
+SNPEFF_JAR="${WORKDIR}/snpEff/snpEff.jar"
+SNPSIFT_JAR="${WORKDIR}/snpEff/SnpSift.jar"
 
-# Input Files
-TARGET_FASTA="/home/bistbs/Elds_deer_Population_Genetic_Analysis/Genome_Annotation/GCA_054824845.1_mRucEld1.hap2_genomic.fna"
-LIFTOFF_GFF="${WORKDIR}/Rucervus_eldii_mCerEla1.1_liftoff.gff3"
-INPUT_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_with_indels.recode.vcf"
+RAW_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_with_indels.recode.vcf"
+AUTOSOME_LIST="${WORKDIR}/chr28_list.txt"
+CHR28_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_chr1-28_with_indels.vcf"
+BIALLELIC_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_chr1-28_biallelic_with_indels.vcf"
+ANNOTATED_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_chr1-28_biallelic_annotated.vcf"
 
-# Output Files
-OUTPUT_VCF="${WORKDIR}/Eld_Deer_35_samples_GQ20_with_indels_annotated.vcf"
-SUMMARY_HTML="${WORKDIR}/snpeff_summary_with_indels.html"
+OUT_DIR="${WORKDIR}/Variants_by_Consequences"
 
-# 2. Prepare Database Folder Structure
-mkdir -p "${SNPEFF_DIR}/data/${DB_NAME}"
-
-cp "${TARGET_FASTA}" "${SNPEFF_DIR}/data/${DB_NAME}/sequences.fa"
-cp "${LIFTOFF_GFF}" "${SNPEFF_DIR}/data/${DB_NAME}/genes.gff"
-
-# Register genome in config if missing
-if ! grep -q "${DB_NAME}.genome" "${SNPEFF_DIR}/snpEff.config"; then
-    echo -e "\n# Rucervus eldii custom genome annotation\n${DB_NAME}.genome : Rucervus eldii" >> "${SNPEFF_DIR}/snpEff.config"
-fi
-
-# 3. Build SnpEff Database
-cd "${SNPEFF_DIR}"
-
-"${JAVA_BIN}" -Xmx16g -jar snpEff.jar build \
-  -gff3 \
-  -v \
-  -noCheckProtein \
-  -noCheckCds \
-  "${DB_NAME}"
-
-# 4. Annotate VCF (SNPs + Indels)
+mkdir -p "${OUT_DIR}"
 cd "${WORKDIR}"
 
-"${JAVA_BIN}" -Xmx24g -jar "${SNPEFF_DIR}/snpEff.jar" \
-  -v "${DB_NAME}" \
-  -stats "${SUMMARY_HTML}" \
-  "${INPUT_VCF}" \
-  > "${OUTPUT_VCF}"
-```
+echo "=== STAGE 1: Creating Primary Autosome List (CM139461.1 - CM139488.1) ==="
+cat << 'EOF' > "${AUTOSOME_LIST}"
+CM139461.1
+CM139462.1
+CM139463.1
+CM139464.1
+CM139465.1
+CM139466.1
+CM139467.1
+CM139468.1
+CM139469.1
+CM139470.1
+CM139471.1
+CM139472.1
+CM139473.1
+CM139474.1
+CM139475.1
+CM139476.1
+CM139477.1
+CM139478.1
+CM139479.1
+CM139480.1
+CM139481.1
+CM139482.1
+CM139483.1
+CM139484.1
+CM139485.1
+CM139486.1
+CM139487.1
+CM139488.1
+EOF
 
-#### Step 2. Consequences or impact class categorization based on synonymous variant, missense variant and loss of function.
-```bash
+echo "=== STAGE 2: Filtering VCF to 28 Primary Autosomes (Removing Scaffolds) ==="
+awk 'NR==FNR {chr[$1]; next} /^#/ || ($1 in chr)' "${AUTOSOME_LIST}" "${RAW_VCF}" > "${CHR28_VCF}"
 
-#!/bin/bash
-# ==============================================================================
-# SnpSift Variant Extraction by Functional Consequence
-# Target Species: Rucervus eldii (Eld's deer)
-# Input VCF: Eld_Deer_35_samples_GQ20_with_indels_annotated.vcf
-# ==============================================================================
+echo "=== STAGE 3: Restricting to Biallelic Sites Only ==="
+bcftools view -m2 -M2 "${CHR28_VCF}" -O v -o "${BIALLELIC_VCF}"
 
-set -euo pipefail
+echo "=== STAGE 4: Annotating Biallelic VCF with SnpEff ==="
+${JAVA_EXEC} -Xmx24g -jar "${SNPEFF_JAR}" \
+  -v Rucervus_eldii \
+  -stats "${WORKDIR}/snpeff_summary_chr1-28_biallelic.html" \
+  "${BIALLELIC_VCF}" > "${ANNOTATED_VCF}"
 
-# 1. Define Paths and Executables
-WORKING_DIR="/home/bistbs/Elds_deer_Population_Genetic_Analysis/SNPeff_Elds_deer"
-SNPSIFT_JAR="${WORKING_DIR}/snpEff/SnpSift.jar"
-JAVA_EXEC="${WORKING_DIR}/jdk-21.0.2+13/bin/java"
+echo "=== STAGE 5: Partitioning VCF into Functional Impact Classes ==="
 
-INPUT_VCF="${WORKING_DIR}/Eld_Deer_35_samples_GQ20_with_indels_annotated.vcf"
-OUTPUT_DIR="${WORKING_DIR}/Variants_by_Consequences"
+# 5a. Loss of Function (LoF / HIGH Impact)
+echo "Extracting LoF (HIGH Impact)..."
+${JAVA_EXEC} -jar "${SNPSIFT_JAR}" filter "( ANN[*].IMPACT = 'HIGH' )" \
+  "${ANNOTATED_VCF}" > "${OUT_DIR}/Eld_Deer_chr1-28_biallelic_LoF.vcf"
 
-# 2. Create the Output Directory
-echo "Creating output directory: ${OUTPUT_DIR}"
-mkdir -p "${OUTPUT_DIR}"
+# 5b. Missense (MODERATE Impact)
+echo "Extracting Missense (MODERATE Impact)..."
+${JAVA_EXEC} -jar "${SNPSIFT_JAR}" filter "( ANN[*].EFFECT HAS 'missense_variant' )" \
+  "${ANNOTATED_VCF}" > "${OUT_DIR}/Eld_Deer_chr1-28_biallelic_missense.vcf"
 
-# 3. Extract Missense Variants
-echo "Extracting Missense variants..."
-${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'missense_variant'" \
-  ${INPUT_VCF} \
-  > ${OUTPUT_DIR}/Eld_deer_missense_sites.vcf
+# 5c. Synonymous (LOW Impact)
+echo "Extracting Synonymous (LOW Impact)..."
+${JAVA_EXEC} -jar "${SNPSIFT_JAR}" filter "( ANN[*].EFFECT HAS 'synonymous_variant' )" \
+  "${ANNOTATED_VCF}" > "${OUT_DIR}/Eld_Deer_chr1-28_biallelic_synonymous.vcf"
 
-# 4. Extract Synonymous Variants
-echo "Extracting Synonymous variants..."
-${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'synonymous_variant'" \
-  ${INPUT_VCF} \
-  > ${OUTPUT_DIR}/Eld_deer_synonymous_sites.vcf
+# 5d. Intergenic (MODIFIER Impact)
+echo "Extracting Intergenic..."
+${JAVA_EXEC} -jar "${SNPSIFT_JAR}" filter "( ANN[*].EFFECT HAS 'intergenic_region' )" \
+  "${ANNOTATED_VCF}" > "${OUT_DIR}/Eld_Deer_chr1-28_biallelic_intergenic.vcf"
 
-# 5. Extract Loss of Function (LoF), Inframe Indels, & Splicing Variants
-echo "Extracting Loss of Function (LoF) & Splicing variants..."
-${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "(ANN[*].EFFECT has 'transcript_ablation') | (ANN[*].EFFECT has 'splice_donor_variant') | (ANN[*].EFFECT has 'splice_acceptor_variant') | (ANN[*].EFFECT has 'stop_gained') | (ANN[*].EFFECT has 'stop_lost') | (ANN[*].EFFECT has 'frameshift_variant') | (ANN[*].EFFECT has 'inframe_insertion') | (ANN[*].EFFECT has 'inframe_deletion') | (ANN[*].EFFECT has 'splice_region_variant')" \
-  ${INPUT_VCF} \
-  > ${OUTPUT_DIR}/Eld_deer_lof_sites.vcf
+echo "=== STAGE 6: Exporting Genotype Matrices (.txt) and Missingness Filtering ==="
+for TYPE in LoF missense synonymous intergenic; do
+  VCF_FILE="${OUT_DIR}/Eld_Deer_chr1-28_biallelic_${TYPE}.vcf"
+  TXT_FILE="${OUT_DIR}/Eld_Deer_chr1-28_biallelic_${TYPE}_genotypes.txt"
+  
+  MISS20_VCF="${OUT_DIR}/Eld_Deer_chr1-28_biallelic_${TYPE}_max20miss.vcf"
+  MISS20_TXT="${OUT_DIR}/Eld_Deer_chr1-28_biallelic_${TYPE}_max20miss_genotypes.txt"
+  
+  echo "Processing ${TYPE} text matrix..."
+  (bcftools query -l "${VCF_FILE}" | tr '\n' '\t' | sed 's/\t$/\n/' | awk '{print "CHROM\tPOS\t" $0}'; \
+   bcftools query -f '%CHROM\t%POS[\t%GT]\n' "${VCF_FILE}") > "${TXT_FILE}"
+   
+  echo "Applying <=20% missingness filter to ${TYPE}..."
+  bcftools view -i 'F_MISSING <= 0.2' "${VCF_FILE}" -O v -o "${MISS20_VCF}"
+  
+  (bcftools query -l "${MISS20_VCF}" | tr '\n' '\t' | sed 's/\t$/\n/' | awk '{print "CHROM\tPOS\t" $0}'; \
+   bcftools query -f '%CHROM\t%POS[\t%GT]\n' "${MISS20_VCF}") > "${MISS20_TXT}"
+done
 
-# 6. Extract Intergenic Variants
-echo "Extracting Intergenic variants..."
-${JAVA_EXEC} -jar ${SNPSIFT_JAR} filter "ANN[*].EFFECT has 'intergenic_region'" \
-  ${INPUT_VCF} \
-  > ${OUTPUT_DIR}/Eld_deer_intergenic_sites.vcf
-
-# -----------------------------------------------------------------
-# Verification & Summary Block
-# -----------------------------------------------------------------
-echo "---------------------------------------------------"
-echo "Filtering Complete! Total variant counts extracted:"
-echo "---------------------------------------------------"
+echo "=============================================================================="
+echo "PIPELINE COMPLETE!"
+echo "Outputs generated in: ${OUT_DIR}"
+echo "=============================================================================="
 echo -n "Missense Sites:   " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_missense_sites.vcf | wc -l
 echo -n "Synonymous Sites: " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_synonymous_sites.vcf | wc -l
 echo -n "LoF/Splicing:     " && grep -v "^#" ${OUTPUT_DIR}/Eld_deer_lof_sites.vcf | wc -l
