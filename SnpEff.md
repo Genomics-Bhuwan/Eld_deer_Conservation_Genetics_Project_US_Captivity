@@ -1,6 +1,6 @@
 #### Variant Annotation for Eld's deer using SnpEff
+```bash
 #!/bin/bash
-# ==============================================================================
 # SnpEff Database Build & Variant Annotation (SNPs + Indels)
 # Species: Rucervus eldii
 # ==============================================================================
@@ -51,3 +51,4 @@ cd "${WORKDIR}"
   -stats "${SUMMARY_HTML}" \
   "${INPUT_VCF}" \
   > "${OUTPUT_VCF}"
+```
