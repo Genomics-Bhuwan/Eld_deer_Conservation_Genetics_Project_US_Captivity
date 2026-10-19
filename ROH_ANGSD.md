@@ -1,3 +1,4 @@
+```bash
 #!/bin/bash
 #SBATCH --job-name=Inbreeding_ROH
 #SBATCH --output=download_%j.out
@@ -135,13 +136,13 @@ module load samtools
 bcftools query -f'%CHROM\t%POS\t%REF,%ALT\t%INFO/AF\n' ${OUT}.bcf | bgzip -c > ${OUT}.freqs.tab.gz
 tabix -s1 -b2 -e2 ${OUT}.freqs.tab.gz
 
-# ---------------- 3. ROH (PL genotype likelihoods) ----------------
+# ---------------- 3.# HMM-based ROH detection using genotype likelihoods (PL) and the AF prior
 bcftools roh --AF-file ${OUT}.freqs.tab.gz \
              --output ${OUT}_ROH_raw.txt \
              --threads 8 \
              ${OUT}.bcf
 
-# ---------------- 4. Keep RG records ----------------
+# ---------------- 4. Keep only "RG" (ROH region) records from the bcftools roh output
 awk '$1=="RG"' ${OUT}_ROH_raw.txt > ${OUT}_ROH_RG_all.txt
 
 # ---------------- 5. Per-sample split ----------------
@@ -155,3 +156,4 @@ done
 awk 'BEGIN{OFS="\t"; print "sample","n_ROH","total_ROH_bp"}
      {n[$2]++; len[$2]+=$6} END{for(s in n) print s, n[s], len[s]}' \
      ${OUT}_ROH_RG_all.txt > ${OUT}_ROH_summary.txt
+```
