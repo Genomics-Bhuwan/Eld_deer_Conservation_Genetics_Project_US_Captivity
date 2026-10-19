@@ -1,159 +1,120 @@
 ```bash
+Step 0. Go to your folder and load the modules
+bash
+# go to the working folder
+cd /home/x-bbist/Inbreeding
+
+# make a folder for the SLURM log files
+mkdir -p /home/x-bbist/Inbreeding/logs
+
+# load the compiler and GSL library that ngsF-HMM needs
+module purge
+module load gcc/11.2.0 gsl/2.4
+Step 1. Convert the beagle file to the ngsF-HMM format
+# The beagle file was generated after running the ANGSD
+# remove the first 3 columns (marker, allele1, allele2) and the header line
+zcat all35.beagle.gz | cut -f 4- | awk 'NR>1' | gzip > all35.glf.gz
+
+# take chromosome and position of each SNP from the mafs file (header removed)
+zcat all35.mafs.gz | cut -f 1,2 | tail -n +2 > all35.pos
+Step 2. Check the two files match
+
+# number of SNPs in the position file
+wc -l all35.pos
+
+# number of SNPs in the likelihood file (must be the same number)
+zcat all35.glf.gz | wc -l
+
+# number of columns in the first line (must be 105 = 35 samples x 3)
+zcat all35.glf.gz | head -1 | awk '{print NF}'
+Step 3. Thin the SNPs (keep one SNP per 2 kb)
+bash
+# list the line numbers of the SNPs to keep
+awk -F'\t' -v d=2000 '$1!=c || $2-l>=d {c=$1; l=$2; print NR}' all35.pos > keep.idx
+
+# keep only those lines in the position file
+awk 'NR==FNR{k[$1];next} FNR in k' keep.idx all35.pos > thin.pos
+
+# keep only those lines in the likelihood file
+awk 'NR==FNR{k[$1];next} FNR in k' keep.idx <(zcat all35.glf.gz) | gzip > thin.glf.gz
+Step 4. Check the thinned files
+
+# all three numbers must be identical (yours was 1005269)
+wc -l keep.idx
+wc -l thin.pos
+zcat thin.glf.gz | wc -l
+
+# SNPs per chromosome (you should see 28)
+cut -f1 thin.pos | sort | uniq -c | sort -k1,1nr
+Step 5. Check ngsF-HMM is built
+bash
+# the program should exist (you built it already)
+ls -lh /home/x-bbist/Inbreeding/ngsF-HMM/ngsF-HMM
+Step 6. Check sample order
+# the sample order in sample.names must match the BAM order used in ANGSD
+paste sample.names bam_list_35.txt | head -40
+Step 7. Write the SLURM script
+cat > /home/x-bbist/Inbreeding/run_ngsFHMM.sh << 'EOF'
 #!/bin/bash
 #SBATCH --job-name=Inbreeding_ROH
-#SBATCH --output=download_%j.out
-#SBATCH --error=download_%j.err
+#SBATCH --account=bio260092
+#SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=65
-#SBATCH --mem=100G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
 #SBATCH --time=80:00:00
-#SBATCH --partition=shared
+#SBATCH --array=1-5
+#SBATCH --output=/home/x-bbist/Inbreeding/logs/ROH_%A_%a.out
+#SBATCH --error=/home/x-bbist/Inbreeding/logs/ROH_%A_%a.err
 #SBATCH --mail-user=bistbs@miamioh.edu
-#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-type=END,FAIL
 
-set -e
+module purge
+module load gcc/11.2.0 gsl/2.4
 
-# ---------------- PATHS ----------------
-BAMDIR=/anvil/projects/x-bio260092/Eld_der
-WORKDIR=/anvil/projects/x-bio260092/Eld_der/ANGSD/Inbreeding
-REFGZ=$WORKDIR/mRucEld1.hap1_genomic.fna.gz
-REF=$WORKDIR/mRucEld1.hap1_genomic.fna
-OUT=$WORKDIR/eld_roh
+cd /home/x-bbist/Inbreeding
 
-cd $WORKDIR
+# count the SNPs
+N=$(wc -l < /home/x-bbist/Inbreeding/thin.pos)
 
-# ---------------- AUTOSOMES (written here) ----------------
-cat > $WORKDIR/autosomes_roh.txt << 'EOF'
-CM139490.1
-CM139491.1
-CM139492.1
-CM139493.1
-CM139494.1
-CM139495.1
-CM139496.1
-CM139497.1
-CM139498.1
-CM139499.1
-CM139500.1
-CM139501.1
-CM139502.1
-CM139503.1
-CM139504.1
-CM139505.1
-CM139506.1
-CM139507.1
-CM139508.1
-CM139509.1
-CM139510.1
-CM139511.1
-CM139512.1
-CM139513.1
-CM139514.1
-CM139515.1
-CM139516.1
-CM139517.1
+# run ngsF-HMM; SLURM sets $SLURM_ARRAY_TASK_ID to 1,2,3,4,5 (one seed per task)
+/home/x-bbist/Inbreeding/ngsF-HMM/ngsF-HMM --geno /home/x-bbist/Inbreeding/thin.glf.gz --pos /home/x-bbist/Inbreeding/thin.pos --n_ind 35 --n_sites $N --lkl --freq r --seed $SLURM_ARRAY_TASK_ID --min_epsilon 1e-7 --min_iters 10 --max_iters 500 --n_threads 8 --out /home/x-bbist/Inbreeding/thin_roh_s$SLURM_ARRAY_TASK_ID
 EOF
+Step 8. Submit and monitor
+# submit the 5 seeds
+sbatch /home/x-bbist/Inbreeding/run_ngsFHMM.sh
 
-# ---------------- BAM LIST (full paths, written here) ----------------
-cat > $WORKDIR/bam_list_35_full.txt << EOF
-$BAMDIR/CRR773090_final_dedup.bam
-$BAMDIR/CRR773091_final_dedup.bam
-$BAMDIR/CRR773093_final_dedup.bam
-$BAMDIR/CRR773094_final_dedup.bam
-$BAMDIR/CRR773095_final_dedup.bam
-$BAMDIR/CRR773096_final_dedup.bam
-$BAMDIR/CRR773097_final_dedup.bam
-$BAMDIR/CRR773098_final_dedup.bam
-$BAMDIR/CRR773099_final_dedup.bam
-$BAMDIR/CRR773100_final_dedup.bam
-$BAMDIR/CRR773101_final_dedup.bam
-$BAMDIR/CRR773102_final_dedup.bam
-$BAMDIR/CRR773103_final_dedup.bam
-$BAMDIR/CRR773104_final_dedup.bam
-$BAMDIR/CRR773105_final_dedup.bam
-$BAMDIR/CRR773106_final_dedup.bam
-$BAMDIR/CRR773107_final_dedup.bam
-$BAMDIR/CRR773108_final_dedup.bam
-$BAMDIR/CRR773109_final_dedup.bam
-$BAMDIR/CRR773110_final_dedup.bam
-$BAMDIR/CRR773111_final_dedup.bam
-$BAMDIR/CRR773112_final_dedup.bam
-$BAMDIR/CRR773113_final_dedup.bam
-$BAMDIR/CRR773114_final_dedup.bam
-$BAMDIR/CRR773115_final_dedup.bam
-$BAMDIR/CRR773116_final_dedup.bam
-$BAMDIR/CRR773117_final_dedup.bam
-$BAMDIR/RE113838_10X.bam
-$BAMDIR/RE114379_10X.bam
-$BAMDIR/RE114623_10X.bam
-$BAMDIR/RE115125_10X.bam
-$BAMDIR/RE115304_10X.bam
-$BAMDIR/RE115445_10X.bam
-$BAMDIR/RE115604_10X.bam
-$BAMDIR/RE116077_10X.bam
-EOF
+# see if they are running
+squeue -u $USER
 
-# sanity checks
-echo "BAMs listed: $(wc -l < bam_list_35_full.txt) (expect 35)"
-echo "Autosomes:   $(wc -l < autosomes_roh.txt) (expect 28)"
-for b in $(cat bam_list_35_full.txt); do
-    [ -s "$b" ] || { echo "MISSING BAM: $b"; exit 1; }
-done
+# look at the progress of seed 1 (use your real job ID in place of *)
+tail /home/x-bbist/Inbreeding/logs/ROH_*_1.out
+Step 9. Compare the 5 seeds (after all finish)
+bash
+# first line of each .indF file is the log-likelihood; the highest (closest to 0) is the best seed
+head -1 thin_roh_s1.indF
+head -1 thin_roh_s2.indF
+head -1 thin_roh_s3.indF
+head -1 thin_roh_s4.indF
+head -1 thin_roh_s5.indF
 
-# ---------------- REFERENCE (unzip + index if needed) ----------------
-module load biocontainers
-module load samtools
-if [ ! -s "$REF" ]; then
-    zcat $REFGZ > $REF
-fi
-if [ ! -s "$REF.fai" ] || [ "$REF" -nt "$REF.fai" ]; then
-    samtools faidx $REF
-fi
+# F (inbreeding) per sample for each seed: lines 2-36 of the .indF file, first column
+sed -n '2,36p' thin_roh_s1.indF | cut -f1 > F_s1.txt
+sed -n '2,36p' thin_roh_s2.indF | cut -f1 > F_s2.txt
+sed -n '2,36p' thin_roh_s3.indF | cut -f1 > F_s3.txt
+sed -n '2,36p' thin_roh_s4.indF | cut -f1 > F_s4.txt
+sed -n '2,36p' thin_roh_s5.indF | cut -f1 > F_s5.txt
 
-# ---------------- 1. ANGSD ----------------
-module load anaconda
-eval "$(conda shell.bash hook)"
-conda activate angsd_env
+# put the sample names and all 5 seeds side by side
+paste sample.names F_s1.txt F_s2.txt F_s3.txt F_s4.txt F_s5.txt | column -t
 
-angsd -GL 1 -dobcf 1 -dopost 1 -domajorminor 1 -domaf 1 \
-      -minQ 30 -minMapQ 30 -minInd 28 \
-      -SNP_pval 1e-6 \
-      -rf $WORKDIR/autosomes_roh.txt \
-      -P 64 \
-      -bam $WORKDIR/bam_list_35_full.txt \
-      -ref $REF \
-      -out $OUT
+If the five columns are close, the run converged. If they differ a lot, rerun with --min_epsilon 1e-9.
 
-conda deactivate
+Step 10. Check the .ibd file layout
+# replace s1 with your best seed
+# line count, then the number of fields on the first 5 lines
+wc -l thin_roh_s1.ibd
+awk '{print NR, NF}' thin_roh_s1.ibd | head -5
 
-# ---------------- 2. Allele frequencies ----------------
-module load biocontainers
-module load bcftools
-module load htslib
-module load samtools
-
-bcftools query -f'%CHROM\t%POS\t%REF,%ALT\t%INFO/AF\n' ${OUT}.bcf | bgzip -c > ${OUT}.freqs.tab.gz
-tabix -s1 -b2 -e2 ${OUT}.freqs.tab.gz
-
-# ---------------- 3.# HMM-based ROH detection using genotype likelihoods (PL) and the AF prior
-bcftools roh --AF-file ${OUT}.freqs.tab.gz \
-             --output ${OUT}_ROH_raw.txt \
-             --threads 8 \
-             ${OUT}.bcf
-
-# ---------------- 4. Keep only "RG" (ROH region) records from the bcftools roh output
-awk '$1=="RG"' ${OUT}_ROH_raw.txt > ${OUT}_ROH_RG_all.txt
-
-# ---------------- 5. Per-sample split ----------------
-bcftools query -l ${OUT}.bcf > $WORKDIR/sample.names
-mkdir -p $WORKDIR/per_sample
-for i in $(cat $WORKDIR/sample.names); do
-    awk -v s="$i" '$2==s' ${OUT}_ROH_RG_all.txt > $WORKDIR/per_sample/$(basename $i).ROH.txt
-done
-
-# ---------------- 6. Summary per individual ----------------
-awk 'BEGIN{OFS="\t"; print "sample","n_ROH","total_ROH_bp"}
-     {n[$2]++; len[$2]+=$6} END{for(s in n) print s, n[s], len[s]}' \
-     ${OUT}_ROH_RG_all.txt > ${OUT}_ROH_summary.txt
 ```
