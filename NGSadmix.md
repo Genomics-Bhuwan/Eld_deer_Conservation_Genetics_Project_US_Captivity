@@ -1,21 +1,16 @@
 ```bash
 #!/bin/bash
-#SBATCH -A x-bio260092
-#SBATCH -p shared
-#SBATCH -N 1
-#SBATCH -n 32
-#SBATCH -t 2-00:00:00
-#SBATCH --job-name=eld_admix
-#SBATCH --error=%x_%j.err
-#SBATCH --output=%x_%j.out
-#SBATCH --mem=64G
-
-# =============================================================================
-# ADMIXTURE / POPULATION STRUCTURE via NGSadmix
-# Runs NGSadmix for K=1..10 clusters, 99 replicate runs each (to check
-# convergence/support for each K), on genotype likelihoods from beagle.sh.
-# Output .qopt files are later merged across replicates with CLUMPP (clumpp.sh).
-# =============================================================================
+#SBATCH --job-name=NGS_admix
+#SBATCH --output=ngsadmix_%j.out
+#SBATCH --error=ngsadmix_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=65
+#SBATCH --mem=100G
+#SBATCH --time=80:00:00
+#SBATCH --partition=shared
+#SBATCH --mail-user=bistbs@miamioh.edu
+#SBATCH --mail-type=BEGIN,END,FAIL
 
 set -e
 
@@ -25,10 +20,10 @@ BEAGLE=$WORKDIR/all35_thin10kb.beagle.gz
 OUTDIR=$WORKDIR/ADX
 
 # ---------------- SETTINGS ----------------
-KMIN=2
-KMAX=8
-NREPS=99         # replicates per K
-NJOBS=8           # NGSadmix runs in parallel
+KMIN=1
+KMAX=10
+NREPS=99          # replicates per K
+NJOBS=16          # NGSadmix runs in parallel
 THREADS=4         # threads per run (NJOBS x THREADS = 32 = -n above)
 
 cd $WORKDIR
