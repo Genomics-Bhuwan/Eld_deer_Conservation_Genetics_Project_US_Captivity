@@ -85,13 +85,7 @@ Step 8. Submit and monitor
 # submit the 5 seeds
 sbatch /home/x-bbist/Inbreeding/run_ngsFHMM.sh
 
-# see if they are running
-squeue -u $USER
-
-# look at the progress of seed 1 (use your real job ID in place of *)
-tail /home/x-bbist/Inbreeding/logs/ROH_*_1.out
 Step 9. Compare the 5 seeds (after all finish)
-bash
 # first line of each .indF file is the log-likelihood; the highest (closest to 0) is the best seed
 head -1 thin_roh_s1.indF
 head -1 thin_roh_s2.indF
