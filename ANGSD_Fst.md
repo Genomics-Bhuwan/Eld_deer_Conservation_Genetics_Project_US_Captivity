@@ -90,3 +90,46 @@ echo "======================================================"
 echo "Completed 1D SFS for ${POP} at $(date)"
 echo "======================================================"
 ```
+
+#### Step 3. 2-D SFS
+```bash
+#!/bin/bash
+#SBATCH --job-name=3_2D_SFS_parallel
+#SBATCH --output=3_2D_SFS_%A_%a.out
+#SBATCH --error=3_2D_SFS_%A_%a.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=70:00:00
+#SBATCH --partition=shared
+#SBATCH --array=0-2
+#SBATCH --mail-user=bistbs@miamioh.edu
+#SBATCH --mail-type=END,FAIL
+
+set -euo pipefail
+
+module load biocontainers
+module load angsd
+
+THREADS=${SLURM_CPUS_PER_TASK}
+OUT_DIR="/anvil/projects/x-bio260092/Eld_der/ANGSD/Fst_across_subspecies/angsd_out/FST_subspecies/Step_3_2_SFS"
+
+# Define pairwise population combinations
+# Task 0: thamin vs siamensis
+# Task 1: thamin vs hainanus
+# Task 2: siamensis vs hainanus
+POP1_LIST=("thamin" "thamin" "siamensis")
+POP2_LIST=("siamensis" "hainanus" "hainanus")
+
+POP1=${POP1_LIST[$SLURM_ARRAY_TASK_ID]}
+POP2=${POP2_LIST[$SLURM_ARRAY_TASK_ID]}
+
+echo "Starting 2D SFS for ${POP1} vs ${POP2} at $(date)"
+
+realSFS ${OUT_DIR}/${POP1}.saf.idx \
+        ${OUT_DIR}/${POP2}.saf.idx \
+        -P ${THREADS} > ${OUT_DIR}/${POP1}.${POP2}.ml
+
+echo "Completed 2D SFS for ${POP1}.${POP2}.ml at $(date)"
+```
